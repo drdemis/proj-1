@@ -1,0 +1,144 @@
+import os
+import tkinter as tk
+from tkinter import messagebox
+from datetime import datetime
+import openpyxl
+from tkcalendar import DateEntry
+from PIL import Image, ImageTk
+
+# اسم ملف البيانات وصورة الخلفية
+EXCEL_FILE = "Lebanese_Army_Visits.xlsx"
+LOGO_FILE = "logo.png"  # ضع اسم ملف صورتك هنا (png أو jpg)
+
+def init_excel():
+    if not os.path.exists(EXCEL_FILE):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "الزيارات"
+        ws.append(["تاريخ الإدخال", "تاريخ الزيارة", "اسم الزائر", "الوفد المرافق", "الخبر / التفاصيل"])
+        wb.save(EXCEL_FILE)
+
+def save_data():
+    date_val = cal_date.get_date().strftime("%Y-%m-%d")
+    visitor_val = entry_visitor.get().strip()
+    delegation_val = txt_delegation.get("1.0", tk.END).strip()
+    news_val = txt_news.get("1.0", tk.END).strip()
+
+    if not visitor_val or not news_val:
+        messagebox.showwarning("تنبيه", "يرجى إدخال اسم الزائر وتفاصيل الخبر على الأقل!")
+        return
+
+    try:
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+        ws = wb["الزيارات"]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ws.append([now_str, date_val, visitor_val, delegation_val, news_val])
+        wb.save(EXCEL_FILE)
+        messagebox.showinfo("نجاح", "تم حفظ البيانات في ملف Excel بنجاح!")
+        clear_fields()
+    except Exception as e:
+        messagebox.showerror("خطأ", f"حدث خطأ أثناء الحفظ: {e}")
+
+def search_data():
+    query = entry_visitor.get().strip()
+    if not query:
+        messagebox.showwarning("تنبيه", "اكتب اسم الزائر في خانة 'اسم الزائر' للبحث عنه.")
+        return
+
+    if not os.path.exists(EXCEL_FILE):
+        messagebox.showinfo("بحث", "لا توجد سجلات محفوظة بعد.")
+        return
+
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["الزيارات"]
+    results = []
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if query.lower() in str(row[2]).lower():
+            results.append(
+                f"التاريخ: {row[1]}\nالزائر: {row[2]}\nالوفد: {row[3]}\nالخبر: {row[4]}\n-------------------"
+            )
+
+    if results:
+        messagebox.showinfo(f"نتائج البحث ({len(results)})", "\n".join(results))
+    else:
+        messagebox.showinfo("بحث", "لم يتم العثور على نتائج مطابقة.")
+
+def clear_fields():
+    cal_date.set_date(datetime.now())
+    entry_visitor.delete(0, tk.END)
+    txt_delegation.delete("1.0", tk.END)
+    txt_news.delete("1.0", tk.END)
+
+init_excel()
+
+root = tk.Tk()
+root.title("قيادة الجيش - برنامج إدارة الزيارات والوفود")
+root.geometry("650x670")
+root.resizable(False, False)
+
+# Canvas لعرض الصورة والخلفية
+canvas = tk.Canvas(root, width=650, height=670, highlightthickness=0)
+canvas.pack(fill="both", expand=True)
+
+# تحميل الصورة الخاصة بك وتطبيق شفافية عليها لتبدو كخلفية مائية
+bg_photo = None
+if os.path.exists(LOGO_FILE):
+    raw_img = Image.open(LOGO_FILE).convert("RGBA")
+    
+    # تحجيم الصورة لتناسب النافذة
+    raw_img = raw_img.resize((650, 670), Image.Resampling.LANCZOS)
+    
+    # تطبيق شفافية خفيفة (0.35) لتسهيل قراءة النصوص فوقها
+    alpha = raw_img.split()[3]
+    alpha = alpha.point(lambda p: int(p * 0.35))
+    raw_img.putalpha(alpha)
+    
+    bg_photo = ImageTk.PhotoImage(raw_img)
+    canvas.create_image(0, 0, image=bg_photo, anchor="nw")
+else:
+    # خلفية بديلة في حال عدم وجود ملف الصورة
+    canvas.create_rectangle(0, 0, 650, 670, fill="#EAEAEA", outline="")
+
+# الهيدر العلوي
+canvas.create_rectangle(0, 0, 650, 85, fill="#1E5631", outline="")
+canvas.create_text(
+    325, 42,
+    text="الجمهورية اللبنانية | وزارة الدفاع الوطني\nقيادة الجيش - برنامج إدارة الزيارات",
+    font=("Arial", 14, "bold"),
+    fill="white",
+    justify="center"
+)
+
+# بطاقة الخانات شفافة ومحددة فوق الصورة
+form_frame = tk.Frame(canvas, bg="#FFFFFF", bd=2, relief="solid")
+canvas.create_window(325, 330, window=form_frame, width=540, height=420)
+
+# 1. التاريخ
+tk.Label(form_frame, text=":التاريخ", font=("Arial", 11, "bold"), bg="#FFFFFF", anchor="e").grid(row=0, column=1, sticky="e", padx=15, pady=12)
+cal_date = DateEntry(form_frame, width=28, background='#1E5631', foreground='white', date_pattern='yyyy-mm-dd', font=("Arial", 11), justify="right")
+cal_date.grid(row=0, column=0, padx=15, pady=12)
+
+# 2. اسم الزائر
+tk.Label(form_frame, text=":اسم الزائر الكريم", font=("Arial", 11, "bold"), bg="#FFFFFF", anchor="e").grid(row=1, column=1, sticky="e", padx=15, pady=12)
+entry_visitor = tk.Entry(form_frame, font=("Arial", 11), justify="right", width=30)
+entry_visitor.grid(row=1, column=0, padx=15, pady=12)
+
+# 3. الوفد المرافق
+tk.Label(form_frame, text=":الوفد المرافق", font=("Arial", 11, "bold"), bg="#FFFFFF", anchor="e").grid(row=2, column=1, sticky="ne", padx=15, pady=12)
+txt_delegation = tk.Text(form_frame, font=("Arial", 10), width=30, height=3)
+txt_delegation.grid(row=2, column=0, padx=15, pady=12)
+
+# 4. التفاصيل / الخبر
+tk.Label(form_frame, text=":الخبر / التفاصيل", font=("Arial", 11, "bold"), bg="#FFFFFF", anchor="e").grid(row=3, column=1, sticky="ne", padx=15, pady=12)
+txt_news = tk.Text(form_frame, font=("Arial", 10), width=30, height=5)
+txt_news.grid(row=3, column=0, padx=15, pady=12)
+
+# الأزرار في الأسفل
+btn_save = tk.Button(root, text="+ إضافة زيارة جديدة", font=("Arial", 11, "bold"), bg="#1E5631", fg="white", width=18, command=save_data)
+canvas.create_window(470, 600, window=btn_save)
+
+btn_search = tk.Button(root, text="🔍 بحث", font=("Arial", 11, "bold"), bg="#0056B3", fg="white", width=12, command=search_data)
+canvas.create_window(180, 600, window=btn_search)
+
+root.mainloop()

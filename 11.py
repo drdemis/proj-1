@@ -7,15 +7,28 @@ import openpyxl
 from tkcalendar import DateEntry
 from PIL import Image, ImageTk
 
-# اسم ملف البيانات وصورة الخلفية
-EXCEL_FILE = "Lebanese_Army_Visits.xlsx"
-LOGO_FILE = os.path.join(os.path.dirname(__file__), "defense_logo.png")
-CEDAR_LOGO_FILE = os.path.join(os.path.dirname(__file__), "CEDAR_LOGO_FILE.png")
-PASSWORD_FILE = os.path.join(os.path.dirname(__file__), "admin_password.hash")
-DEVELOPER_PASSWORD_FILE = os.path.join(os.path.dirname(__file__), "developer_password.hash")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EXCEL_FILE = os.path.join(BASE_DIR, "Lebanese_Army_Visits.xlsx")
+LOGO_FILE = os.path.join(BASE_DIR, "defense_logo.png")
+CEDAR_LOGO_FILE = os.path.join(BASE_DIR, "CEDAR_LOGO_FILE.png")
+PASSWORD_FILE = os.path.join(BASE_DIR, "admin_password.hash")
+DEVELOPER_PASSWORD_FILE = os.path.join(BASE_DIR, "developer_password.hash")
+
+root = None
+notebook = None
+main_tab = None
+developer_tab = None
+cal_date = None
+entry_visitor = None
+txt_delegation = None
+txt_news = None
+suggestions = None
+edit_menu = None
+
 
 def password_hash(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
 
 def authenticate_admin(root):
     if not os.path.exists(PASSWORD_FILE):
@@ -61,6 +74,7 @@ def authenticate_admin(root):
 
     return False
 
+
 def authenticate_developer(root):
     if not os.path.exists(DEVELOPER_PASSWORD_FILE):
         while True:
@@ -103,6 +117,7 @@ def authenticate_developer(root):
     messagebox.showerror("رفض الدخول", "كلمة مرور المطور غير صحيحة.", parent=root)
     return False
 
+
 def select_all(widget):
     if isinstance(widget, tk.Text):
         widget.tag_add(tk.SEL, "1.0", tk.END)
@@ -112,9 +127,12 @@ def select_all(widget):
         widget.icursor(tk.END)
     return "break"
 
+
 def show_edit_menu(event):
     widget = event.widget
     widget.focus_set()
+    if edit_menu is None:
+        return
     edit_menu.delete(0, tk.END)
     edit_menu.add_command(label="لصق", command=lambda: widget.event_generate("<<Paste>>"))
     edit_menu.add_command(label="نسخ", command=lambda: widget.event_generate("<<Copy>>"))
@@ -123,10 +141,12 @@ def show_edit_menu(event):
     edit_menu.add_command(label="تحديد الكل", command=lambda: select_all(widget))
     edit_menu.tk_popup(event.x_root, event.y_root)
 
+
 def enable_pasting(widget):
     widget.bind("<Button-3>", show_edit_menu)
     widget.bind("<Control-v>", lambda event: widget.event_generate("<<Paste>>"))
     widget.bind("<Control-V>", lambda event: widget.event_generate("<<Paste>>"))
+
 
 def init_excel():
     if not os.path.exists(EXCEL_FILE):
@@ -136,7 +156,11 @@ def init_excel():
         ws.append(["تاريخ الإدخال", "تاريخ الزيارة", "اسم الزائر", "الوفد المرافق", "الخبر / التفاصيل"])
         wb.save(EXCEL_FILE)
 
+
 def save_data():
+    if cal_date is None or entry_visitor is None or txt_delegation is None or txt_news is None:
+        return False
+
     date_val = cal_date.get_date().strftime("%Y-%m-%d")
     visitor_val = entry_visitor.get().strip()
     delegation_val = txt_delegation.get("1.0", tk.END).strip()
@@ -144,7 +168,7 @@ def save_data():
 
     if not visitor_val or not news_val:
         messagebox.showwarning("تنبيه", "يرجى إدخال اسم الزائر وتفاصيل الخبر على الأقل!")
-        return
+        return False
 
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
@@ -154,18 +178,24 @@ def save_data():
         wb.save(EXCEL_FILE)
         messagebox.showinfo("نجاح", "تم حفظ البيانات في ملف Excel بنجاح!")
         clear_fields()
-    except Exception as e:
-        messagebox.showerror("خطأ", f"حدث خطأ أثناء الحفظ: {e}")
+        return True
+    except Exception as exc:
+        messagebox.showerror("خطأ", f"حدث خطأ أثناء الحفظ: {exc}")
+        return False
+
 
 def search_data():
+    if entry_visitor is None:
+        return False
+
     query = entry_visitor.get().strip()
     if not query:
         messagebox.showwarning("تنبيه", "اكتب اسم الزائر في خانة 'اسم الزائر' للبحث عنه.")
-        return
+        return False
 
     if not os.path.exists(EXCEL_FILE):
         messagebox.showinfo("بحث", "لا توجد سجلات محفوظة بعد.")
-        return
+        return False
 
     wb = openpyxl.load_workbook(EXCEL_FILE)
     ws = wb["الزيارات"]
@@ -176,6 +206,8 @@ def search_data():
             results.append((row[1], row[2], row[3], row[4]))
 
     if results:
+        if root is None:
+            return False
         result_window = tk.Toplevel(root)
         result_window.title(f"نتائج البحث ({len(results)})")
         result_window.geometry("600x420")
@@ -197,8 +229,11 @@ def search_data():
             news_text.pack(fill="x", pady=(0, 10))
             news_text.insert("1.0", str(news_value or ""))
             enable_pasting(news_text)
-    else:
-        messagebox.showinfo("بحث", "لم يتم العثور على نتائج مطابقة.")
+        return True
+
+    messagebox.showinfo("بحث", "لم يتم العثور على نتائج مطابقة.")
+    return False
+
 
 def get_visitor_names():
     if not os.path.exists(EXCEL_FILE):
@@ -212,10 +247,15 @@ def get_visitor_names():
     except Exception:
         return []
 
+
 def hide_suggestions(event=None):
-    suggestions.place_forget()
+    if suggestions is not None:
+        suggestions.place_forget()
+
 
 def choose_suggestion(event=None):
+    if suggestions is None or entry_visitor is None:
+        return
     selection = suggestions.curselection()
     if selection:
         entry_visitor.delete(0, tk.END)
@@ -223,7 +263,10 @@ def choose_suggestion(event=None):
     hide_suggestions()
     entry_visitor.focus_set()
 
+
 def update_suggestions(event=None):
+    if entry_visitor is None or suggestions is None or root is None:
+        return
     query = entry_visitor.get().strip().lower()
     if not query:
         hide_suggestions()
@@ -241,143 +284,142 @@ def update_suggestions(event=None):
     else:
         hide_suggestions()
 
+
 def clear_fields():
+    if cal_date is None or entry_visitor is None or txt_delegation is None or txt_news is None:
+        return
     cal_date.set_date(datetime.now())
     entry_visitor.delete(0, tk.END)
     txt_delegation.delete("1.0", tk.END)
     txt_news.delete("1.0", tk.END)
 
+
 def show_developer_tab():
+    if root is None or notebook is None or developer_tab is None:
+        return
     if not authenticate_developer(root):
         return
     if str(developer_tab) not in notebook.tabs():
         notebook.add(developer_tab, text="المطور")
     notebook.select(developer_tab)
 
-init_excel()
 
-root = tk.Tk()
-root.title("دائرة العلاقات العامة والاعلام  - برنامج إدارة الزيارات والوفود")
-root.geometry("650x670")
-root.resizable(False, False)
-edit_menu = tk.Menu(root, tearoff=False)
+def main():
+    global root, notebook, main_tab, developer_tab, cal_date, entry_visitor, txt_delegation, txt_news, suggestions, edit_menu
 
-if not authenticate_admin(root):
-    root.destroy()
-    raise SystemExit
+    init_excel()
 
-notebook = ttk.Notebook(root)
-notebook.pack(fill="both", expand=True)
-main_tab = tk.Frame(notebook)
-developer_tab = tk.Frame(notebook)
-notebook.add(main_tab, text="الزيارات")
+    root = tk.Tk()
+    root.title("دائرة العلاقات العامة والاعلام  - برنامج إدارة الزيارات والوفود")
+    root.geometry("650x670")
+    root.resizable(False, False)
+    edit_menu = tk.Menu(root, tearoff=False)
 
-# Canvas لعرض الصورة والخلفية
-canvas = tk.Canvas(main_tab, width=650, height=670, highlightthickness=0)
-canvas.pack(fill="both", expand=True)
+    if not authenticate_admin(root):
+        root.destroy()
+        raise SystemExit
 
-# تحميل الصورة الخاصة بك وتطبيق شفافية عليها لتبدو كخلفية مائية
-bg_photo = None
-if os.path.exists(LOGO_FILE):
-    raw_img = Image.open(LOGO_FILE).convert("RGBA")
-    
-    # تحجيم الصورة لتناسب النافذة
-    raw_img = raw_img.resize((650, 670), Image.Resampling.LANCZOS)
-    
-    # تطبيق شفافية خفيفة (0.35) لتسهيل قراءة النصوص فوقها
-    alpha = raw_img.split()[3]
-    alpha = alpha.point(lambda p: int(p * 0.35))
-    raw_img.putalpha(alpha)
-    
-    bg_photo = ImageTk.PhotoImage(raw_img)
-    bg_item = canvas.create_image(0, 0, image=bg_photo, anchor="nw")
-    canvas.tag_lower(bg_item)
-else:
-    # خلفية بديلة في حال عدم وجود ملف الصورة
-    canvas.create_rectangle(0, 0, 650, 670, fill="#EAEAEA", outline="")
+    notebook = ttk.Notebook(root)
+    notebook.pack(fill="both", expand=True)
+    main_tab = tk.Frame(notebook)
+    developer_tab = tk.Frame(notebook)
+    notebook.add(main_tab, text="الزيارات")
 
-# الهيدر العلوي
-canvas.create_rectangle(0, 0, 650, 95, fill="#1E5631", outline="")
+    canvas = tk.Canvas(main_tab, width=650, height=670, highlightthickness=0)
+    canvas.pack(fill="both", expand=True)
 
-canvas.create_text(
-    325, 24,
-    text="الجمهورية اللبنانية",
-    font=("Arial", 11, "bold"),
-    fill="white",
-    justify="center"
-)
+    bg_photo = None
+    if os.path.exists(LOGO_FILE):
+        raw_img = Image.open(LOGO_FILE).convert("RGBA")
+        raw_img = raw_img.resize((650, 670), Image.Resampling.LANCZOS)
+        alpha = raw_img.split()[3]
+        alpha = alpha.point(lambda p: int(p * 0.35))
+        raw_img.putalpha(alpha)
+        bg_photo = ImageTk.PhotoImage(raw_img)
+        bg_item = canvas.create_image(0, 0, image=bg_photo, anchor="nw")
+        canvas.tag_lower(bg_item)
+    else:
+        canvas.create_rectangle(0, 0, 650, 670, fill="#EAEAEA", outline="")
 
-if os.path.exists(CEDAR_LOGO_FILE):
-    cedar_img = Image.open(CEDAR_LOGO_FILE).convert("RGBA")
-    cedar_img = cedar_img.resize((28, 28), Image.Resampling.LANCZOS)
-    cedar_photo = ImageTk.PhotoImage(cedar_img)
-    canvas.create_image(430, 24, image=cedar_photo, anchor="center")
+    canvas.create_rectangle(0, 0, 650, 95, fill="#1E5631", outline="")
 
-canvas.create_text(
-    310, 52,
-    text="وزارة الدفاع الوطني | دائرة العلاقات العامة والاعلام - برنامج إدارة الزيارات",
-    font=("Arial", 11, "bold"),
-    fill="white",
-    justify="center"
-)
+    canvas.create_text(
+        325, 24,
+        text="الجمهورية اللبنانية",
+        font=("Arial", 11, "bold"),
+        fill="white",
+        justify="center"
+    )
 
-if os.path.exists(LOGO_FILE):
-    logo_img = Image.open(LOGO_FILE).convert("RGBA")
-    logo_img = logo_img.resize((24, 24), Image.Resampling.LANCZOS)
-    header_logo = ImageTk.PhotoImage(logo_img)
-    canvas.create_image(605, 52, image=header_logo, anchor="center")
+    if os.path.exists(CEDAR_LOGO_FILE):
+        cedar_img = Image.open(CEDAR_LOGO_FILE).convert("RGBA")
+        cedar_img = cedar_img.resize((28, 28), Image.Resampling.LANCZOS)
+        cedar_photo = ImageTk.PhotoImage(cedar_img)
+        canvas.create_image(430, 24, image=cedar_photo, anchor="center")
 
-# عناصر الإدخال موضوعة مباشرة فوق الخلفية حتى يظهر الشعار المائي بينها
-label_bg = "#EAEAEA" if not bg_photo else "#FFFFFF"
+    canvas.create_text(
+        310, 52,
+        text="وزارة الدفاع الوطني | دائرة العلاقات العامة والاعلام - برنامج إدارة الزيارات",
+        font=("Arial", 11, "bold"),
+        fill="white",
+        justify="center"
+    )
 
-# 1. التاريخ
-tk.Label(canvas, text=":التاريخ", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=145, width=120, height=35)
-cal_date = DateEntry(canvas, width=28, background='#1E5631', foreground='white', date_pattern='yyyy-mm-dd', font=("Arial", 11), justify="right")
-cal_date.place(x=115, y=145, width=270, height=35)
+    if os.path.exists(LOGO_FILE):
+        logo_img = Image.open(LOGO_FILE).convert("RGBA")
+        logo_img = logo_img.resize((24, 24), Image.Resampling.LANCZOS)
+        header_logo = ImageTk.PhotoImage(logo_img)
+        canvas.create_image(605, 52, image=header_logo, anchor="center")
 
-# 2. اسم الزائر
-tk.Label(canvas, text=":اسم الزائر الكريم", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=205, width=120, height=35)
-entry_visitor = tk.Entry(canvas, font=("Arial", 11), justify="right", width=30)
-entry_visitor.place(x=115, y=205, width=270, height=35)
-enable_pasting(entry_visitor)
+    label_bg = "#EAEAEA" if not bg_photo else "#FFFFFF"
 
-suggestions = tk.Listbox(root, font=("Arial", 10), height=4, justify="right", exportselection=False)
-entry_visitor.bind("<KeyRelease>", update_suggestions)
-entry_visitor.bind("<FocusOut>", lambda event: root.after(150, hide_suggestions))
-suggestions.bind("<ButtonRelease-1>", choose_suggestion)
+    tk.Label(canvas, text=":التاريخ", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=145, width=120, height=35)
+    cal_date = DateEntry(canvas, width=28, background='#1E5631', foreground='white', date_pattern='yyyy-mm-dd', font=("Arial", 11), justify="right")
+    cal_date.place(x=115, y=145, width=270, height=35)
 
-# 3. الوفد المرافق
-tk.Label(canvas, text=":الوفد المرافق", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=265, width=120, height=35)
-txt_delegation = tk.Text(canvas, font=("Arial", 10), width=30, height=3)
-txt_delegation.place(x=115, y=265, width=270, height=70)
-enable_pasting(txt_delegation)
+    tk.Label(canvas, text=":اسم الزائر الكريم", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=205, width=120, height=35)
+    entry_visitor = tk.Entry(canvas, font=("Arial", 11), justify="right", width=30)
+    entry_visitor.place(x=115, y=205, width=270, height=35)
+    enable_pasting(entry_visitor)
 
-# 4. التفاصيل / الخبر
-tk.Label(canvas, text=":الخبر / التفاصيل", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=355, width=120, height=35)
-txt_news = tk.Text(canvas, font=("Arial", 10), width=30, height=5)
-txt_news.place(x=115, y=355, width=270, height=105)
-enable_pasting(txt_news)
+    suggestions = tk.Listbox(root, font=("Arial", 10), height=4, justify="right", exportselection=False)
+    entry_visitor.bind("<KeyRelease>", update_suggestions)
+    entry_visitor.bind("<FocusOut>", lambda event: root.after(150, hide_suggestions))
+    suggestions.bind("<ButtonRelease-1>", choose_suggestion)
 
-# الأزرار في الأسفل
-btn_save = tk.Button(main_tab, text="+ إضافة زيارة جديدة", font=("Arial", 11, "bold"), bg="#1E5631", fg="white", width=18, command=save_data)
-canvas.create_window(470, 600, window=btn_save)
+    tk.Label(canvas, text=":الوفد المرافق", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=265, width=120, height=35)
+    txt_delegation = tk.Text(canvas, font=("Arial", 10), width=30, height=3)
+    txt_delegation.place(x=115, y=265, width=270, height=70)
+    enable_pasting(txt_delegation)
 
-btn_search = tk.Button(main_tab, text="🔍 بحث", font=("Arial", 11, "bold"), bg="#0056B3", fg="white", width=12, command=search_data)
-canvas.create_window(180, 600, window=btn_search)
+    tk.Label(canvas, text=":الخبر / التفاصيل", font=("Arial", 11, "bold"), bg=label_bg, anchor="e").place(x=405, y=355, width=120, height=35)
+    txt_news = tk.Text(canvas, font=("Arial", 10), width=30, height=5)
+    txt_news.place(x=115, y=355, width=270, height=105)
+    enable_pasting(txt_news)
 
-btn_developer = tk.Button(main_tab, text="دخول المطور", font=("Arial", 10, "bold"), command=show_developer_tab)
-canvas.create_window(325, 635, window=btn_developer)
+    btn_save = tk.Button(main_tab, text="+ إضافة زيارة جديدة", font=("Arial", 11, "bold"), bg="#1E5631", fg="white", width=18, command=save_data)
+    canvas.create_window(470, 600, window=btn_save)
 
-tk.Label(
-    developer_tab,
-    text="منطقة المطور - الوصول محمي بكلمة مرور",
-    font=("Arial", 14, "bold")
-).pack(pady=(35, 15))
-tk.Button(
-    developer_tab,
-    text="فتح ملف التطبيق للتعديل",
-    font=("Arial", 11, "bold"),
-    command=lambda: os.startfile(os.path.abspath(__file__))
-).pack(pady=10)
+    btn_search = tk.Button(main_tab, text="🔍 بحث", font=("Arial", 11, "bold"), bg="#0056B3", fg="white", width=12, command=search_data)
+    canvas.create_window(180, 600, window=btn_search)
 
-root.mainloop()
+    btn_developer = tk.Button(main_tab, text="دخول المطور", font=("Arial", 10, "bold"), command=show_developer_tab)
+    canvas.create_window(325, 635, window=btn_developer)
+
+    tk.Label(
+        developer_tab,
+        text="منطقة المطور - الوصول محمي بكلمة مرور",
+        font=("Arial", 14, "bold")
+    ).pack(pady=(35, 15))
+    tk.Button(
+        developer_tab,
+        text="فتح ملف التطبيق للتعديل",
+        font=("Arial", 11, "bold"),
+        command=lambda: os.startfile(os.path.abspath(__file__))
+    ).pack(pady=10)
+
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
